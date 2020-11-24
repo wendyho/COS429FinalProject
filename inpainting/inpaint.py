@@ -17,6 +17,7 @@ from core.utils import set_device, postprocess, set_seed
 
 # image path the path to the image to read
 # mask will be a path to an image as well with 255 in the mask locations
+# both images should be of size 256x256.
 def inpaint(image_path, mask_path=None):
     # torch.cuda.set_device(0)
     set_seed(2020)
