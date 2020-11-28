@@ -1,0 +1,10 @@
+.ipynb_checkpoints/
+__pycache__
+release_model
+*.jpg
+*.yml
+*.npz
+*.png
+*.log
+pen_inpaint_model
+inpaint_output
