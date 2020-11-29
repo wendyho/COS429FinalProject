@@ -1,2 +1,4 @@
-annotations/*.json
-val2017/*.jpg
+coco/annotations/*.json
+coco/val2017/*.jpg
+.quickdrawcache/*.bin
+test_images_drawn
