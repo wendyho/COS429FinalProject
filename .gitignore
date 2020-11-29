@@ -1,2 +1,12 @@
 annotations/*.json
 val2017/*.jpg
+models/research/object_detection/test_data
+models/research/object_detection/test_data/*
+.ipynb_checkpoints
+*/.ipynb_checkpoints/*
+__pycache__
+*/__pycache__/*
+.DS_Store
+*/.DS_Store/*
+.quickdrawcache
+.quickdrawcache/*
