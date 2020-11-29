@@ -1,4 +1,13 @@
 coco/annotations/*.json
 coco/val2017/*.jpg
-.quickdrawcache/*.bin
-test_images_drawn
+models/research/object_detection/test_data
+models/research/object_detection/test_data/*
+.ipynb_checkpoints
+*/.ipynb_checkpoints/*
+__pycache__
+*/__pycache__/*
+.DS_Store
+*/.DS_Store/*
+.quickdrawcache
+.quickdrawcache/*
+.gitignore
