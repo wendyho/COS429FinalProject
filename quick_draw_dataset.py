@@ -1,4 +1,5 @@
 from quickdraw import QuickDrawData
+from quickdraw import QuickDrawDataGroup
 import IPython
 import os
 import json
@@ -125,41 +126,90 @@ class QuickDrawDataset:
                 pruned_detections.append({'class': quickdraw_class,'bbox': new_bbox})
     
         return pruned_detections
-        
+    
+    # get dimensions of drawing
+    def get_quickdraw_dims(drawing):
+        smallest_x = float('inf')
+        smallest_y = float('inf')
+        largest_x = 0
+        largest_y = 0
+
+        for stroke in drawing.strokes:
+            xarr = []
+            yarr = []
+        #    plt.plot(stroke, marker = 'o')
+
+            for x, y in stroke:
+                xarr.append(x)
+                yarr.append(y)
+                #plt.plot(x, y, marker = ',')
+                #print("x={} y={}".format(x, y))
+                if(x <= smallest_x):
+                    smallest_x = x
+                if(y <= smallest_y):
+                    smallest_y = y
+                if(x >= largest_x):
+                    largest_x = x
+                if(y >= largest_y):
+                    largest_y = y
+
+        #     plt.plot(xarr,yarr, marker = ',', color="white")
+
+        width = largest_x-smallest_x
+        height = largest_y - smallest_y
+
+        return width, height
+    
+    # return nearest neighbor to image (inv) from quick draw data group (qdg) of the same class
+    def nearest_neighbor(qdg, inv, w, h):
+        smallest_norm = float('inf')
+        closest_drawing = 0
+
+        for drawing in qdg.drawings:
+            pix = np.array(drawing.image)
+            pixgray = cv2.cvtColor(pix, cv2.COLOR_BGR2GRAY)
+            pixgray = cv2.resize(pixgray, (w, h))
+            fnorm = np.linalg.norm(pixgray - inv, 'fro')
+
+            if(fnorm < smallest_norm):
+                smallest_norm = fnorm
+                closest_drawing = drawing.key_id
+
+        final = qdg.search_drawings(key_id=closest_drawing)[0]
+        return final
+    
     # Draws pruned detections on image.
     def draw(self, image, detections, save_filename, logging=False):
         I = image.copy()
         for detection in detections:
-            drawing = self.qd.get_drawing(detection['class'])
-            pil_im = drawing.image
+            
+#             qd = QuickDrawData()
+#             drawing = self.qd.get_drawing(detection['class'])
+#             drawing = qd.get_drawing("bus")
 
             plt.axis('off')
 
-            smallest_x = float('inf')
-            smallest_y = float('inf')
-            largest_x = 0
-            largest_y = 0
-            for stroke in drawing.strokes:
-                xarr = []
-                yarr = []
-
-                for x, y in stroke:
-                    xarr.append(x)
-                    yarr.append(y)
-                    if(x <= smallest_x):
-                        smallest_x = x
-                    if(y <= smallest_y):
-                        smallest_y = y
-                    if(x >= largest_x):
-                        largest_x = x
-                    if(y >= largest_y):
-                        largest_y = y
-
-            width = largest_x-smallest_x
-            height = largest_y - smallest_y
-
             [bbox_x, bbox_y, bbox_w, bbox_h] = detection['bbox']
-            for stroke in drawing.strokes:
+
+            bbox_x = int(bbox_x)
+            bbox_y = int(bbox_y)
+            bbox_w = int(bbox_w)
+            bbox_h = int(bbox_h)
+
+            bbox_image = I[bbox_x:bbox_x+bbox_w, bbox_y:bbox_y+bbox_h]
+            edges=cv2.Canny(bbox_image, 150, 200)
+            inv = cv2.bitwise_not(edges)
+
+            h, w = np.shape(inv)
+
+            qdg = QuickDrawDataGroup(detection['class'], recognized=True)
+            print(qdg)
+
+            final = QuickDrawDataset.nearest_neighbor(qdg, inv, w, h)
+
+            width, height = QuickDrawDataset.get_quickdraw_dims(final)
+
+            for stroke in final.strokes:
                 xarr = []
                 yarr = []
                 for x, y in stroke:
@@ -168,12 +218,58 @@ class QuickDrawDataset:
 
                 newx = [x * (bbox_w/width) + bbox_x for x in xarr]
                 newy = [y * (bbox_h/height) + bbox_y for y in yarr]
-                plt.plot(newx,newy, marker = ',', color="white")
+                newx = np.rint(newx).astype(int)
+                newy = np.rint(newy).astype(int)
+                for i in range(0, len(newx) - 1):
+                    I = cv2.line(I, (newx[i],newy[i]), (newx[i+1],newy[i+1]), (255, 255, 255) , 2)
+
+        plt.imshow(I)
+        plt.show()                                                
+            
+#             drawing = self.qd.get_drawing(detection['class'])
+#             pil_im = drawing.image
+
+#             plt.axis('off')
+
+#             smallest_x = float('inf')
+#             smallest_y = float('inf')
+#             largest_x = 0
+#             largest_y = 0
+#             for stroke in drawing.strokes:
+#                 xarr = []
+#                 yarr = []
+
+#                 for x, y in stroke:
+#                     xarr.append(x)
+#                     yarr.append(y)
+#                     if(x <= smallest_x):
+#                         smallest_x = x
+#                     if(y <= smallest_y):
+#                         smallest_y = y
+#                     if(x >= largest_x):
+#                         largest_x = x
+#                     if(y >= largest_y):
+#                         largest_y = y
+
+#             width = largest_x-smallest_x
+#             height = largest_y - smallest_y
+
+#             [bbox_x, bbox_y, bbox_w, bbox_h] = detection['bbox']
+#             for stroke in drawing.strokes:
+#                 xarr = []
+#                 yarr = []
+#                 for x, y in stroke:
+#                     xarr.append(x)
+#                     yarr.append(y)
+
+#                 newx = [x * (bbox_w/width) + bbox_x for x in xarr]
+#                 newy = [y * (bbox_h/height) + bbox_y for y in yarr]
+#                 plt.plot(newx,newy, marker = ',', color="white")
                 
-        if logging:
-            plt.imshow(I)
-            plt.axis('off')
-            plt.savefig(save_filename, bbox_inches='tight', pad_inches=0)
-            plt.show()
+#         if logging:
+#             plt.imshow(I)
+#             plt.axis('off')
+#             plt.savefig(save_filename, bbox_inches='tight', pad_inches=0)
+#             plt.show()
         
         return I
