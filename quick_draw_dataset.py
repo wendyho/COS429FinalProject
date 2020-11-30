@@ -176,11 +176,14 @@ class QuickDrawDataset:
                 closest_drawing = drawing.key_id
 
         final = qdg.search_drawings(key_id=closest_drawing)[0]
+
         return final
     
     # Draws pruned detections on image.
-    def draw(self, image, detections, save_filename, logging=False):
+    def draw(self, image, orig_image, detections, save_filename, logging=False):
         I = image.copy()
+        Im = orig_image.copy()
+
         for detection in detections:
             
 #             qd = QuickDrawData()
@@ -196,14 +199,13 @@ class QuickDrawDataset:
             bbox_w = int(bbox_w)
             bbox_h = int(bbox_h)
 
-            bbox_image = I[bbox_x:bbox_x+bbox_w, bbox_y:bbox_y+bbox_h]
+            bbox_image = Im[bbox_y:bbox_y+bbox_h, bbox_x:bbox_x+bbox_w]
             edges=cv2.Canny(bbox_image, 150, 200)
             inv = cv2.bitwise_not(edges)
 
             h, w = np.shape(inv)
 
             qdg = QuickDrawDataGroup(detection['class'], recognized=True)
-            print(qdg)
 
             final = QuickDrawDataset.nearest_neighbor(qdg, inv, w, h)
 
