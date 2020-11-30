@@ -35,7 +35,7 @@ class QuickDrawDataset:
             "scissors": "scissors",
             "sheep": "sheep",
 #             "person": "scorpion",
-            "person": "duck",
+            "person": "teddy-bear",
             "dog": "dog", 
             "cake": "cake",
             "tv": "television",
@@ -226,6 +226,8 @@ class QuickDrawDataset:
                     I = cv2.line(I, (newx[i],newy[i]), (newx[i+1],newy[i+1]), (255, 255, 255) , 2)
 
         plt.imshow(I)
+        plt.axis('off')
+        plt.savefig(save_filename, bbox_inches='tight', pad_inches=0)
         plt.show()                                                
             
 #             drawing = self.qd.get_drawing(detection['class'])
@@ -271,7 +273,6 @@ class QuickDrawDataset:
 #         if logging:
 #             plt.imshow(I)
 #             plt.axis('off')
-#             plt.savefig(save_filename, bbox_inches='tight', pad_inches=0)
 #             plt.show()
         
         return I
