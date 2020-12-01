@@ -128,7 +128,7 @@ class QuickDrawDataset:
         return pruned_detections
     
     # get dimensions of drawing
-    def get_quickdraw_dims(drawing):
+    def get_quickdraw_dims(self, drawing):
         smallest_x = float('inf')
         smallest_y = float('inf')
         largest_x = 0
@@ -161,7 +161,7 @@ class QuickDrawDataset:
         return width, height
     
     # return nearest neighbor to image (inv) from quick draw data group (qdg) of the same class
-    def nearest_neighbor(qdg, inv, w, h):
+    def nearest_neighbor(self, qdg, inv, w, h):
         smallest_norm = float('inf')
         closest_drawing = 0
 
@@ -207,9 +207,9 @@ class QuickDrawDataset:
 
             qdg = QuickDrawDataGroup(detection['class'], recognized=True)
 
-            final = QuickDrawDataset.nearest_neighbor(qdg, inv, w, h)
+            final = self.nearest_neighbor(qdg, inv, w, h)
 
-            width, height = QuickDrawDataset.get_quickdraw_dims(final)
+            width, height = self.get_quickdraw_dims(final)
 
             for stroke in final.strokes:
                 xarr = []
