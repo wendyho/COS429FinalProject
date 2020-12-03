@@ -67,6 +67,25 @@ class ObjectDetectionModel:
         }
         model_display_name = 'CenterNet HourGlass104 Keypoints 512x512' 
         model_handle = ALL_MODELS[model_display_name]
+        
+        self.COCO17_HUMAN_POSE_KEYPOINTS = [(0, 1),
+            (0, 2),
+            (1, 3),
+            (2, 4),
+            (0, 5),
+            (0, 6),
+            (5, 7),
+            (7, 9),
+            (6, 8),
+            (8, 10),
+            (5, 6),
+            (5, 11),
+            (6, 12),
+            (11, 12),
+            (11, 13),
+            (13, 15),
+            (12, 14),
+            (14, 16)]
     
         self.detect_fn = hub_model = hub.load(model_handle)
 
@@ -74,6 +93,10 @@ class ObjectDetectionModel:
         image_np = np.expand_dims(image_np, axis=0)
         detections = self.detect_fn(image_np)
         detections = {key:value.numpy() for key,value in detections.items()}
+        
+        if 'detection_keypoints' in detections:
+            keypoints = detections['detection_keypoints'][0]
+            keypoint_scores = detections['detection_keypoint_scores'][0]
 
         if logging:
             label_id_offset = 0
@@ -87,7 +110,10 @@ class ObjectDetectionModel:
                 use_normalized_coordinates=True,
                 max_boxes_to_draw=200,
                 min_score_thresh=.30,
-                agnostic_mode=False)
+                agnostic_mode=False,
+                keypoints=keypoints,
+                keypoint_scores=keypoint_scores,
+                keypoint_edges=self.COCO17_HUMAN_POSE_KEYPOINTS)
 
             plt.figure(figsize=(24,32))
             plt.imshow(image_np_with_detections[0])
