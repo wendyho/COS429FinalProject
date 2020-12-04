@@ -27,6 +27,7 @@ class QuickDrawDataset:
     def __init__(self):
         self.qd = QuickDrawData(recognized = True)
         self.coco_to_quickdraw = {
+            # "dummy": "face", 
             "pizza": "pizza",
             "bus": "bus",
             "couch": "couch",
@@ -179,10 +180,10 @@ class QuickDrawDataset:
                 temp.append((drawing.name, drawing.key_id, kp, des))
 
 
-                # I = cv2.drawKeypoints(I, kp, I, flags=cv2.DRAW_MATCHES_FLAGS_DRAW_RICH_KEYPOINTS) 
-                # plt.figure(figsize=(5,5))
-                # plt.imshow(I)
-                # plt.show()
+                I = cv2.drawKeypoints(I, kp, I, flags=cv2.DRAW_MATCHES_FLAGS_DRAW_RICH_KEYPOINTS) 
+                plt.figure(figsize=(5,5))
+                plt.imshow(I)
+                plt.show()
                 return None
             keypoint_dict_save[category] = temp_save 
             keypoint_dict[category] = temp 
@@ -398,7 +399,7 @@ class QuickDrawDataset:
             # bbox_image = resize(bbox_image,256)
             edges = cv2.Canny(bbox_image, 50, 400, apertureSize = 3, L2gradient = True)
             inv = edges
-            inv = cv2.bitwise_not(edges)
+            # inv = cv2.bitwise_not(edges)
 #             print('inv shape', inv.shape)
             h, w = np.shape(inv)
             # masked_bbox_image = np.full((I.shape[0], I.shape[1]), 0, dtype=float)
@@ -474,6 +475,15 @@ class QuickDrawDataset:
             drawing = self.draw_blank(qdrawing, drawing, 0, 0, w, h)[:,:, None]
             drawing = np.array(drawing, dtype=np.uint8)
             drawing = cv2.GaussianBlur(drawing,(3,3),0, borderType=cv2.BORDER_CONSTANT)
+            
+            drawing_disp = drawing.copy()
+            kp, des = sift.detectAndCompute(drawing_disp, None)
+            drawing_disp = cv2.drawKeypoints(drawing_disp, kp, drawing_disp, flags=cv2.DRAW_MATCHES_FLAGS_DRAW_RICH_KEYPOINTS) 
+            plt.figure(figsize=(5,5))
+            plt.imshow(drawing_disp)
+            plt.show()
+
+            
 
             plt.figure(figsize=(5,5))
             plt.imshow(drawing, cmap='Greys')
@@ -482,7 +492,7 @@ class QuickDrawDataset:
 
             trans, new_shape = self.getCornersTranslation(max_homo, drawing)
             print(trans, new_shape)
-            warped = cv2.warpPerspective(drawing.T, max_homo, dsize=(new_shape)).T
+            warped = cv2.warpPerspective(drawing.T, max_homo, dsize=(bbox_h, bbox_w)).T
             print(warped)
             plt.figure(figsize=(5,5))
             plt.imshow(warped, cmap='Greys')
@@ -491,8 +501,18 @@ class QuickDrawDataset:
             # dst = cv2.perspectiveTransform(pts,max_homo)
 
             # print the warped image onto the original
-            # for i in range(bbox_y, b)
+            r,c = 0,0
+            for i in range(bbox_y, bbox_y+bbox_h):
+                for j in range(bbox_x, bbox_x+bbox_w):
+                    # if c > warped.shape[0]: 
+                    if not (warped[r,c] == 0): 
+                        orig_image[i,j] = [255,255,255]#warped[r,c]
+                    c+=1
+                c = 0 
+                r += 1
             # print(dst)
+            plt.figure(figsize=(5,5))
+            plt.imshow(orig_image, cmap='Greys')
                     
                         
 
