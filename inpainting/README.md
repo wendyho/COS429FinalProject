@@ -12,7 +12,7 @@ In CVPR 2019.
 ## Usage in this Porject:
 
 Download the [Places2](https://drive.google.com/open?id=1Hd8DUCJMGnCZz53_19zV4_p06YJ0UDt2) inpainting model, and put into a folder ./pen_inpaint_model
-
+That's it!
 
 
 ## Introduction 

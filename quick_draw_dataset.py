@@ -20,10 +20,12 @@ import skimage.io as io
 import matplotlib.pyplot as plt
 import pylab
 from object_detection.utils import label_map_util
+import pickle
+from util import resize
 
 class QuickDrawDataset:
     def __init__(self):
-        self.qd = QuickDrawData()
+        self.qd = QuickDrawData(recognized = True)
         self.coco_to_quickdraw = {
             "pizza": "pizza",
             "bus": "bus",
@@ -105,11 +107,91 @@ class QuickDrawDataset:
             "dining table": "table", 
             "cell phone": "cell phone", 
             "teddy bear": "teddy-bear", 
-            "hair dryer": "drill" }
-      
+            "hair dryer": "drill",
+            # dummies to force caluation of sift on person subfeatures
+            "xxpersondummy": "face", 
+            "xpersondummy2": "t-shirt",
+            "xpersondummy3": "pants"}
+
         PATH_TO_LABELS = 'models/research/object_detection/data/mscoco_label_map.pbtxt'
         self.category_index = label_map_util.create_category_index_from_labelmap(
             PATH_TO_LABELS, use_display_name=True)
+
+        self.keypoint_dict = self.load_sift_dict(compute=False)
+
+    def keypoint_to_tuple(self, point): 
+        return (point.pt, point.size, point.angle, point.response, point.octave, point.class_id) 
+    def tuple_to_keypoint(self, point): 
+        return cv2.KeyPoint(x=point[0][0],y=point[0][1],_size=point[1], _angle=point[2], 
+                            _response=point[3], _octave=point[4], _class_id=point[5]) 
+
+    # load the sift dictionary, if compute is true, recomputes the sift features
+    # how to use the dictionary: dict maps from category -> image
+    # loop through images within category, finding best matches + inliers in ransac,
+    # take the image with most inliers, homographize the boi
+    def load_sift_dict(self, compute=False): 
+        # self.qd
+        # self.coco_to_quickdraw
+        directory = 'quickdraw_keypoints'
+        path = directory + '/keypoints.p'
+        if not compute and os.path.exists(path):
+            print('sifted keypoints found')
+            with open(path, 'rb') as fp:
+                keypoint_dict = pickle.load(fp)
+            # translate back to cv2 keypoints 
+            print('translating to keypoints')
+            for category, points in keypoint_dict.items(): 
+                for i in range(len(points)): 
+                    kp_kp = [self.tuple_to_keypoint(points[i][2][j]) for j in range(len(points[i][2]))]
+                    points[i] = (points[i][0], points[i][1], kp_kp, points[i][3])
+            print('success')
+            return keypoint_dict 
+            
+        print('creating sift keypoint dataset')
+        if not os.path.exists(directory):
+            os.mkdir('quickdraw_keypoints')
+
+
+        keypoint_dict_save = dict()
+        keypoint_dict = dict()
+        # todo do for person categories too, later. 
+        sift = cv2.SIFT_create()#contrastThreshold= 0.01)#, edgeThreshold = 1000)
+        for _, category in self.coco_to_quickdraw.items(): 
+            temp_save = []
+            temp = []
+            for drawing in self.qd.get_drawing_group(category).drawings: 
+
+                # print(drawing)
+                w,h = self.get_quickdraw_dims(drawing)
+                I = np.zeros((h,w)) # switch h/w -> row/cols
+                I = self.draw_blank(drawing, I, 0, 0, w, h)[:,:, None]
+                I = np.array(I, dtype=np.uint8)
+                I = cv2.GaussianBlur(I,(3,3),0, borderType=cv2.BORDER_CONSTANT)
+
+                # plt.figure(figsize=(5,5))
+                # plt.imshow(I, cmap='Greys')
+                # plt.show()
+                kp, des = sift.detectAndCompute(I, None)
+                tuple_kp = [self.keypoint_to_tuple(kp[i]) for i in range(len(kp))] # save kp as tuples
+
+                # save name just in case, probably unneeded
+                temp_save.append((drawing.name, drawing.key_id, tuple_kp,des))
+                temp.append((drawing.name, drawing.key_id, kp, des))
+
+
+                # I = cv2.drawKeypoints(I, kp, I, flags=cv2.DRAW_MATCHES_FLAGS_DRAW_RICH_KEYPOINTS) 
+                # plt.figure(figsize=(5,5))
+                # plt.imshow(I)
+                # plt.show()
+                return None
+            keypoint_dict_save[category] = temp_save 
+            keypoint_dict[category] = temp 
+            return 
+        print('dumping')
+        with open(path, 'wb') as fp: 
+            pickle.dump(keypoint_dict_save, fp, protocol=pickle.HIGHEST_PROTOCOL)
+        print('success')
+        return keypoint_dict
         
     # Returns smallest axis-aligned rectangle containing points. Input points are in fractional (Object Detection API) format.
     # Output box is in pixel (COCO dataset annotation) format.
@@ -234,7 +316,7 @@ class QuickDrawDataset:
 
         for drawing in qdg.drawings:
             drawn_image = self.draw_blank(drawing, inv, bbox_x, bbox_y, w, h)
-            drawn_image = cv2.GaussianBlur(drawn_image,(5,5),cv2.BORDER_DEFAULT)
+            drawn_image = cv2.GaussianBlur(drawn_image,(5,5),0,cv2.BORDER_DEFAULT)
 #             drawn_image = cv2.bitwise_not(drawn_image)
             fnorm = np.linalg.norm(drawn_image - inv, 'fro')
 
@@ -250,7 +332,170 @@ class QuickDrawDataset:
         final = qdg.search_drawings(key_id=closest_drawing)[0]
 
         return final
-    
+    # get a translation matrix with dx and dy as the translations
+    def translateMatrix(self, dx, dy):
+        trans = np.diag(np.ones(3))
+        trans[0,2] = dx
+        trans[1,2] = dy
+        return trans
+    def getCornersTranslation(self, H, im):
+        topl = H @ np.append([0,0],1)
+        topl = (topl/topl[2])[:2]
+        topr = H @ np.append([0,im.shape[1]-1],1)
+        topr = (topr/topr[2])[:2]
+        botl = H @ np.append([im.shape[0]-1,0],1)
+        botl = (botl/botl[2])[:2]
+        botr = H @ np.append([im.shape[0]-1,im.shape[1]-1],1)
+        botr = (botr/botr[2])[:2]
+        maxx = max(topl[0], topr[0], botl[0], botr[0])
+        minx = min(topl[0], topr[0], botl[0], botr[0])
+        maxy = max(topl[1], topr[1], botl[1], botr[1])
+        miny = min(topl[1], topr[1], botl[1], botr[1])
+        
+        #find translation matrix
+        trans = self.translateMatrix(-minx, -miny)
+        # new shape of the transformed image
+        new_shape = (int(maxx-minx),int(maxy-miny))
+
+        # find offsets for both images to combine
+        # two cases: if translation was in a positive direction then we need to 
+        # compensate by moving the static image
+        # else if translation was in a negative direction then we need to 
+        # compensate by moving the warped image
+        # xoff_l = 0
+        # yoff_l = 0
+        # xoff_r = 0
+        # yoff_r = 0
+        # if trans[0,2] >= 0:
+        #     xoff_r = int(trans[0,2])
+        # else:
+        #     xoff_l = -1 * int(trans[0,2])
+        # if trans[1,2] >= 0:
+        #     yoff_r = int(trans[1,2])
+        # else: 
+        #     yoff_l = -1 * int(trans[1,2])
+        return trans, new_shape #, (xoff_l, yoff_l), (xoff_r, yoff_r)
+
+    def draw_sift(self, image, orig_image, detections, save_filename, logging=False):
+        I = image.copy()
+        Im = orig_image.copy()
+
+        sift = cv2.SIFT_create()
+        MIN_MATCH_COUNT = 10
+        for detection in detections:
+            print(detection)
+
+            plt.axis('off')
+
+            [bbox_x, bbox_y, bbox_w, bbox_h] = detection['bbox']
+
+            bbox_x = int(bbox_x)
+            bbox_y = int(bbox_y)
+            bbox_w = int(bbox_w)
+            bbox_h = int(bbox_h)
+            bbox_image = Im[bbox_y:bbox_y+bbox_h, bbox_x:bbox_x+bbox_w]
+
+            # bbox_image = resize(bbox_image,256)
+            edges = cv2.Canny(bbox_image, 50, 400, apertureSize = 3, L2gradient = True)
+            inv = edges
+            inv = cv2.bitwise_not(edges)
+#             print('inv shape', inv.shape)
+            h, w = np.shape(inv)
+            # masked_bbox_image = np.full((I.shape[0], I.shape[1]), 0, dtype=float)
+#             print('exp shape', masked_bbox_image[bbox_y:bbox_y+bbox_h, bbox_x:bbox_x+bbox_w].shape)
+            # masked_bbox_image[bbox_y:bbox_y+bbox_h, bbox_x:bbox_x+bbox_w] = inv
+#             print('masked_bbox_image')
+
+            masked_bbox_image = cv2.GaussianBlur(inv,(5,5),cv2.BORDER_DEFAULT)
+            # masked_bbox_image = inv
+
+            print(masked_bbox_image.shape)
+            if logging:
+                plt.imshow(masked_bbox_image, cmap='Greys')
+                plt.show()   
+            detect_im = np.array(masked_bbox_image, dtype=np.uint8)
+            kp, des = sift.detectAndCompute(detect_im, None)
+            detect_im = cv2.drawKeypoints(detect_im, kp, detect_im, flags=cv2.DRAW_MATCHES_FLAGS_DRAW_RICH_KEYPOINTS) 
+            plt.figure(figsize=(5,5))
+            plt.imshow(detect_im)
+            plt.show()
+
+            max_homo = np.identity(3)
+            max_inliers = -1
+            max_id = -1
+
+            for drawing in self.keypoint_dict[detection['class']]:
+
+                _, draw_id, draw_kp, draw_des = drawing 
+                # print(draw_id, draw_kp, draw_des)
+                # FLANN_INDEX_KDTREE = 1
+                # index_params = dict(algorithm = FLANN_INDEX_KDTREE, trees = 5)
+                # search_params = dict(checks=50)   
+                # flann = cv2.FlannBasedMatcher(index_params,search_params)
+                # matches = flann.knnMatch(draw_des,des,k=2)
+                bf = cv2.BFMatcher(crossCheck=True)
+                matches = bf.match(draw_des, des)
+
+                # print(len(matches))
+
+                # store all the good matches as per Lowe's ratio test.
+                # good = []
+                # for m,n in matches:
+                #     if m.distance < 0.90*n.distance:
+                #         good.append(m)
+                # print(len(good))
+                if len(matches)>MIN_MATCH_COUNT:
+                    src_pts = np.array([ draw_kp[m.queryIdx].pt for m in matches ]).reshape(-1,1,2)
+                    dst_pts = np.array([ kp[m.trainIdx].pt for m in matches ]).reshape(-1,1,2)
+
+                    M, mask = cv2.findHomography(src_pts, dst_pts, cv2.RANSAC,5.0)
+                    matchesMask = mask.ravel().tolist()
+                    numInliers = sum(matchesMask)
+                    # print(numInliers)
+                    if numInliers > max_inliers: 
+                        max_inliers = numInliers
+                        max_homo = M 
+                        max_id = draw_id
+
+                else:
+                    # print "Not enough matches are found - %d/%d" % (len(good),MIN_MATCH_COUNT)
+                    matchesMask = None
+
+            if max_inliers < 0: 
+                print('not found')
+                return 
+
+            # get the drawing 
+            qdrawing = self.qd.search_drawings(detection['class'], key_id = max_id)[0]
+            print(qdrawing)
+
+            w,h = self.get_quickdraw_dims(qdrawing)
+            drawing = np.zeros((h,w)) 
+            drawing = self.draw_blank(qdrawing, drawing, 0, 0, w, h)[:,:, None]
+            drawing = np.array(drawing, dtype=np.uint8)
+            drawing = cv2.GaussianBlur(drawing,(3,3),0, borderType=cv2.BORDER_CONSTANT)
+
+            plt.figure(figsize=(5,5))
+            plt.imshow(drawing, cmap='Greys')
+            plt.show()
+            print(max_homo, max_id, max_inliers)
+
+            trans, new_shape = self.getCornersTranslation(max_homo, drawing)
+            print(trans, new_shape)
+            warped = cv2.warpPerspective(drawing.T, max_homo, dsize=(new_shape)).T
+            print(warped)
+            plt.figure(figsize=(5,5))
+            plt.imshow(warped, cmap='Greys')
+            plt.show()
+
+            # dst = cv2.perspectiveTransform(pts,max_homo)
+
+            # print the warped image onto the original
+            # for i in range(bbox_y, b)
+            # print(dst)
+                    
+                        
+
     # Draws pruned detections on image.
     def draw(self, image, orig_image, detections, save_filename, logging=False):
         I = image.copy()
@@ -284,7 +529,8 @@ class QuickDrawDataset:
                 plt.axis('off')
                 plt.show()   
 
-            qdg = QuickDrawDataGroup(detection['class'], recognized=True)
+            qdg = self.qd.get_drawing_group(detection['class'])
+            # qdg = QuickDrawDataGroup(detection['class'], recognized=True)
 
 #             final = qdg.get_drawing()
             final = self.nearest_neighbor(qdg, masked_bbox_image, bbox_x, bbox_y, w, h, logging=True)

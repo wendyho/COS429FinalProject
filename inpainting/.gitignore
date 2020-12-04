@@ -6,5 +6,5 @@ release_model
 *.npz
 *.png
 *.log
-pen_inpaint_model
-inpaint_output
+pen_inpaint_model/*
+inpaint_output/*
